@@ -497,6 +497,7 @@ model Outreach {
   followUpAt     DateTime?
   notes          String?
   loggedById     String
+  followUpNotifiedAt DateTime?
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
@@ -506,6 +507,7 @@ model Outreach {
   case     Case?  @relation(fields: [caseId], references: [id])
 
   @@index([memberId, contactedAt])
+  @@index([followUpAt])
 }
 
 model Donation {
@@ -565,6 +567,9 @@ model Target {
 
 model MonthlyMetric {
   id        String    @id @default(cuid())
+  // "<month>:<scope>:<memberId|teamId|org>" — one row per subject per month (nullable columns
+  // can't form a reliable compound unique key in Postgres).
+  key       String    @unique
   month     String
   memberId  String?
   teamId    String?
@@ -574,7 +579,7 @@ model MonthlyMetric {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  @@unique([month, scope, memberId, teamId])
+  @@index([month, scope])
 }
 
 // ---------- Events (phase 3) ----------
@@ -624,9 +629,12 @@ model Expense {
   paidById        String
   receiptKey      String
   status          ExpenseStatus @default(SUBMITTED)
+  submittedById   String
   reviewedById    String?
   reviewedAt      DateTime?
   rejectionReason String?
+  reviewNote      String? // e.g. why an over-budget expense was approved
+  reimbursedAt    DateTime?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
@@ -650,6 +658,10 @@ model Task {
   caseId           String?
   completedAt      DateTime?
   recurringMonthly Boolean    @default(false)
+  // First task of a monthly series; each month's clone points back to it.
+  recurrenceSourceId String?
+  dueReminderSentAt  DateTime?
+  overdueNotifiedAt  DateTime?
   deletedAt        DateTime?
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt

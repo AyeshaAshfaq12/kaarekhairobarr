@@ -1,13 +1,14 @@
 /* eslint-disable no-console */
 // Phase 1 seed (§13.2): roles, teams, NDA v1, checklist, and the people tree:
 // 1 SuperAdmin, 1 Finance, 3 leads, 2 sub-leads, 15 members across 3 levels, plus applicants.
-// Money data (cases, donors, outreach, donations) is added with Phase 2.
+// Cases, donors, outreach, donations, targets, tasks and an event come from seed-work.ts.
 import { PrismaClient, type Action, type Gender, type MemberStatus, type Module, type Scope } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 import { createHash } from 'crypto'
 import { encryptString } from '../src/lib/portal/crypto'
 import { SEEDED_ROLES, SYSTEM_ROLE } from '../src/lib/portal/rbac/model'
 import { DEFAULT_ONBOARDING_ITEMS, NDA_V1_BODY, NDA_V1_TITLE } from '../src/lib/portal/nda-text'
+import { seedWork } from './seed-work'
 
 const prisma = new PrismaClient()
 const PASSWORD = process.env.SEED_PASSWORD || 'kkb-portal-dev'
@@ -200,6 +201,8 @@ async function main() {
       })
     }
   }
+
+  await seedWork(prisma, ids)
 
   console.log(`Seeded ${PEOPLE.length} people. Sign in as ${emailFor('admin')} (or lead1@kkb.test, m1@kkb.test, …) with password "${PASSWORD}".`)
 }

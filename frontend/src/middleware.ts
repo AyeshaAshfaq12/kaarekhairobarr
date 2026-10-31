@@ -19,7 +19,9 @@ export function middleware(request: NextRequest) {
   }
 
   const response = NextResponse.next()
-  if (token) {
+  // Only real navigations slide the expiry; background prefetches shouldn't touch the cookie.
+  const isPrefetch = request.headers.get('next-router-prefetch') === '1' || request.headers.get('purpose') === 'prefetch'
+  if (token && !isPrefetch) {
     response.cookies.set(SESSION_COOKIE, token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',

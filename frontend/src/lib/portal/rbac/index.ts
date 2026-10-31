@@ -47,6 +47,9 @@ export async function loadPermissions(userId: string) {
   return { roleNames: roles.map((userRole) => userRole.role.name), perms: mergePermissions(grants) }
 }
 
+/** A signed-in, ACTIVE member (what requireActiveViewer returns). */
+export type ActiveViewer = Viewer & { memberId: string }
+
 export const getViewer = cache(async (): Promise<Viewer | null> => {
   const user = await getSessionUser()
   if (!user) return null
@@ -94,7 +97,7 @@ export async function requireActiveViewer() {
   if (viewer.status === 'PENDING_NDA') redirect('/portal/onboarding/nda')
   if (viewer.status !== 'ACTIVE') redirect('/portal/onboarding/pending')
   if (await getOutstandingNda(viewer.memberId)) redirect('/portal/onboarding/nda')
-  return viewer as Viewer & { memberId: string }
+  return viewer as ActiveViewer
 }
 
 export function scopeFor(viewer: Viewer, module: ModuleName, action: ActionName): ScopeName | null {

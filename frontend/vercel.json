@@ -1,5 +1,7 @@
 {
   "crons": [
-    { "path": "/api/portal/cron/purge-unverified", "schedule": "0 22 * * *" }
+    { "path": "/api/portal/cron/nightly", "schedule": "0 22 * * *" },
+    { "path": "/api/portal/cron/morning", "schedule": "0 3 * * *" },
+    { "path": "/api/portal/cron/purge-unverified", "schedule": "30 22 * * *" }
   ]
 }

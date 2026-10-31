@@ -7,6 +7,7 @@ import { buildTree, type TreeNode } from '@/lib/portal/hierarchy'
 import { raisedByMember, targetsByMember } from '@/lib/portal/metrics'
 import { can, memberIdFilter, requireActiveViewer, visibleMemberIds } from '@/lib/portal/rbac'
 import { formatDate, formatPKR, monthKey } from '@/lib/portal/time'
+import ExportLinks from '@/components/portal/ExportLinks'
 import { Card, EmptyState, MemberStatusBadge, PageHeader, Tabs } from '@/components/portal/ui'
 
 export const metadata: Metadata = { title: 'Members | KKB Portal' }
@@ -158,6 +159,7 @@ export default async function MembersPage({ searchParams }: { searchParams: Sear
         </div>
       </form>
 
+      {can(viewer, 'members', 'export') ? <ExportLinks report="members" params={{ q: searchParams.q, team: searchParams.team, status: searchParams.status, lead: searchParams.lead }} /> : null}
       <Card className="overflow-hidden p-0 sm:p-0">
         {members.length === 0 ? (
           <div className="p-4">

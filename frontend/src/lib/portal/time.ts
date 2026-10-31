@@ -20,6 +20,27 @@ export function monthRange(key: string) {
   return { start, end }
 }
 
+// "YYYY-MM-DD" of a moment in Asia/Karachi.
+export function dayKey(date: Date = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: PORTAL_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(date)
+}
+
+// UTC bounds of the Karachi calendar day containing `date`.
+export function dayRange(date: Date = new Date()) {
+  const [year, month, day] = dayKey(date).split('-').map(Number)
+  const start = new Date(Date.UTC(year, month - 1, day, -5))
+  return { start, end: new Date(start.getTime() + 86_400_000) }
+}
+
+// Parses an <input type="date"> value as a Karachi date (midday, so it never shifts a day).
+export function parseKarachiDate(value: string) {
+  return new Date(`${value}T12:00:00+05:00`)
+}
+
+export function toDateInput(date: Date | null | undefined) {
+  return date ? dayKey(date) : ''
+}
+
 export function formatDate(value: Date | string | null | undefined) {
   if (!value) return '—'
   return new Intl.DateTimeFormat('en-PK', {

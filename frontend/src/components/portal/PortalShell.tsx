@@ -5,7 +5,17 @@ import { usePathname } from 'next/navigation'
 import React, { ReactNode, useEffect, useState } from 'react'
 import clsx from 'clsx'
 import {
+  BadgeCheck,
   Bell,
+  CalendarDays,
+  Contact,
+  FileBarChart,
+  HeartHandshake,
+  ListTodo,
+  Megaphone,
+  Receipt,
+  Target,
+  Wallet,
   ClipboardCheck,
   LayoutDashboard,
   LogOut,
@@ -29,6 +39,16 @@ const ICONS = {
   roles: ShieldCheck,
   audit: ScrollText,
   settings: Settings,
+  cases: HeartHandshake,
+  outreach: Megaphone,
+  donors: Contact,
+  donations: Wallet,
+  verify: BadgeCheck,
+  targets: Target,
+  tasks: ListTodo,
+  events: CalendarDays,
+  expenses: Receipt,
+  reports: FileBarChart,
 } as const
 
 export type NavItem = { href: string; label: string; icon: keyof typeof ICONS; badge?: number }

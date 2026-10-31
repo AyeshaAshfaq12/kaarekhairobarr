@@ -27,7 +27,7 @@ export function PageHeader({
 
 export function Card({ title, actions, children, className }: { title?: ReactNode; actions?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <section className={clsx('rounded-3xl border border-ink-900/5 bg-white/85 p-4 shadow-soft sm:p-6', className)}>
+    <section className={clsx('min-w-0 rounded-3xl border border-ink-900/5 bg-white/85 p-4 shadow-soft sm:p-6', className)}>
       {title || actions ? (
         <div className="mb-4 flex items-center justify-between gap-3">
           {title ? <h2 className="font-display text-lg font-semibold text-ink-900">{title}</h2> : <span />}
@@ -121,6 +121,56 @@ export function ProgressBar({ value, max, className }: { value: number; max: num
   )
 }
 
+/** Verified progress, with pending money as a lighter segment (§7.1). */
+export function SplitProgress({ verified, pending, target, className }: { verified: number; pending: number; target: number; className?: string }) {
+  const pct = (value: number) => (target > 0 ? Math.min(100, (value / target) * 100) : 0)
+  const verifiedPct = pct(verified)
+  const pendingPct = Math.min(100 - verifiedPct, pct(pending))
+  return (
+    <div className={clsx('flex h-2.5 w-full overflow-hidden rounded-full bg-ink-50', className)} title={`Verified ${verified}, pending ${pending}, target ${target}`}>
+      <div className="h-full bg-forest-500" style={{ width: `${verifiedPct}%` }} />
+      <div className="h-full bg-forest-200" style={{ width: `${pendingPct}%` }} />
+    </div>
+  )
+}
+
+const BAND_TONE = { ON_TRACK: 'green', CLOSE: 'amber', BEHIND: 'red' } as const
+const BAND_LABEL = { ON_TRACK: 'On track', CLOSE: 'Close', BEHIND: 'Behind' } as const
+
+export function BandBadge({ band }: { band: keyof typeof BAND_TONE | null }) {
+  return band ? <Badge tone={BAND_TONE[band]}>{BAND_LABEL[band]}</Badge> : <span className="text-xs text-ink-400">—</span>
+}
+
+export function MonthPicker({ month, basePath, extra }: { month: string; basePath: string; extra?: Record<string, string | undefined> }) {
+  return (
+    <form action={basePath} className="flex items-center gap-2">
+      {Object.entries(extra ?? {}).map(([key, value]) => (value ? <input key={key} type="hidden" name={key} value={value} /> : null))}
+      <input type="month" name="month" defaultValue={month} className="field !w-auto !py-2" aria-label="Month" />
+      <button className="btn-secondary !py-2">Go</button>
+    </form>
+  )
+}
+
+export function Pagination({ page, pages, href }: { page: number; pages: number; href: (page: number) => string }) {
+  if (pages <= 1) return null
+  return (
+    <div className="mt-4 flex items-center justify-between text-sm">
+      {page > 1 ? <Link href={href(page - 1)} className="btn-outline">Previous</Link> : <span />}
+      <span className="text-ink-500">
+        Page {page} of {pages}
+      </span>
+      {page < pages ? <Link href={href(page + 1)} className="btn-outline">Next</Link> : <span />}
+    </div>
+  )
+}
+
+export function pageHref(basePath: string, params: Record<string, string | undefined>) {
+  return (page: number) => {
+    const search = new URLSearchParams(Object.entries({ ...params, page: String(page) }).filter(([, value]) => value) as [string, string][])
+    return `${basePath}?${search.toString()}`
+  }
+}
+
 export function KeyValue({ items }: { items: { label: string; value: ReactNode }[] }) {
   return (
     <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
@@ -133,3 +183,7 @@ export function KeyValue({ items }: { items: { label: string; value: ReactNode }
     </dl>
   )
 }
+
+export const CASE_STATUS_TONE: Record<string, BadgeTone> = { DRAFT: 'neutral', OPEN: 'blue', FUNDED: 'green', CLOSED: 'neutral', CANCELLED: 'red' }
+export const DONATION_STATUS_TONE: Record<string, BadgeTone> = { PENDING: 'amber', VERIFIED: 'green', REJECTED: 'red' }
+export const TASK_STATUS_TONE: Record<string, BadgeTone> = { TODO: 'neutral', IN_PROGRESS: 'blue', IN_REVIEW: 'amber', BLOCKED: 'red', DONE: 'green', CANCELLED: 'neutral' }
