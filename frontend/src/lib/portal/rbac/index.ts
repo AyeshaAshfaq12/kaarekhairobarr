@@ -69,6 +69,27 @@ export const getViewer = cache(async (): Promise<Viewer | null> => {
   }
 })
 
+/**
+ * Builds a Viewer for a user without a browser session (e.g. a WhatsApp command). Same rules
+ * as getViewer: roles only count for ACTIVE members.
+ */
+export async function viewerForUser(userId: string): Promise<ActiveViewer | null> {
+  const user = await prisma.user.findUnique({ where: { id: userId }, include: { member: true } })
+  if (!user?.member || user.disabledAt || user.member.status !== 'ACTIVE') return null
+  const { roleNames, perms } = await loadPermissions(user.id)
+  return {
+    userId: user.id,
+    email: user.email,
+    memberId: user.member.id,
+    fullName: user.member.fullName,
+    status: user.member.status,
+    roleNames,
+    perms,
+    isAdmin: roleNames.some((name) => ADMIN_ROLE_NAMES.includes(name)),
+    isSuperAdmin: roleNames.includes(SYSTEM_ROLE.SUPER_ADMIN),
+  }
+}
+
 /** The latest active NDA the member has not yet signed, if any. */
 export const getOutstandingNda = cache(async (memberId: string) => {
   const active = await prisma.ndaVersion.findFirst({ where: { isActive: true }, orderBy: { version: 'desc' } })

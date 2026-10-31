@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client'
 import { prisma, type Tx } from './db'
 import { portalUrl, sendEmail } from './email'
 import { ADMIN_ROLE_NAMES } from './rbac/model'
+import { isWhatsAppConfigured, sendTemplate } from './whatsapp'
 
 // Every notification type the portal sends (§11.2). Users can turn email off per type.
 export const NOTIFICATION_TYPES = {
@@ -61,8 +62,28 @@ export const EmailChannel: NotificationChannel = {
   },
 }
 
-// Phase 4 adds a WhatsAppChannel here without touching callers.
-const channels: NotificationChannel[] = [InAppChannel, EmailChannel]
+/**
+ * WhatsApp (Phase 4): only when the Cloud API is configured, the member opted in, and hasn't
+ * turned this type off. Uses the approved template so it works outside the 24-hour window.
+ */
+export const WhatsAppChannel: NotificationChannel = {
+  name: 'whatsapp',
+  async send(userId, type, payload) {
+    if (!isWhatsAppConfigured()) return
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { disabledAt: true, whatsappOptIn: true, whatsappOptOuts: true, member: { select: { id: true, status: true, whatsapp: true, phone: true } } },
+    })
+    if (!user || user.disabledAt || !user.whatsappOptIn || user.whatsappOptOuts.includes(type) || user.member?.status !== 'ACTIVE') return
+    const phone = user.member.whatsapp ?? user.member.phone
+    const link = payload.href ? portalUrl(payload.href) : ''
+    const details = [payload.body, link].filter(Boolean).join('\n') || '-'
+    await sendTemplate(phone, user.member.id, payload.title, details)
+  },
+}
+
+// Every notification goes through these adapters; callers never change.
+const channels: NotificationChannel[] = [InAppChannel, EmailChannel, WhatsAppChannel]
 
 export async function notify(userId: string, type: NotificationType, payload: NotificationPayload, tx?: Tx) {
   for (const channel of channels) {

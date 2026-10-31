@@ -6,7 +6,9 @@ import { can, requireActiveViewer } from '@/lib/portal/rbac'
 import { formatDateTime } from '@/lib/portal/time'
 import { ActionForm, Field, SubmitButton } from '@/components/portal/ActionForm'
 import { Card, PageHeader } from '@/components/portal/ui'
-import { changePasswordAction, updateEmailPrefsAction, updateProfileAction } from './actions'
+import { changePasswordAction, updateEmailPrefsAction, updateProfileAction, updateWhatsappPrefsAction } from './actions'
+import { isWhatsAppConfigured } from '@/lib/portal/whatsapp'
+import { HELP_TEXT } from '@/lib/portal/whatsapp-commands'
 
 export const metadata: Metadata = { title: 'Settings | KKB Portal' }
 
@@ -14,7 +16,7 @@ export default async function SettingsPage() {
   const viewer = await requireActiveViewer()
   const [member, user, signatures] = await Promise.all([
     prisma.member.findUniqueOrThrow({ where: { id: viewer.memberId } }),
-    prisma.user.findUniqueOrThrow({ where: { id: viewer.userId }, select: { emailOptOuts: true } }),
+    prisma.user.findUniqueOrThrow({ where: { id: viewer.userId }, select: { emailOptOuts: true, whatsappOptIn: true, whatsappOptOuts: true } }),
     prisma.ndaSignature.findMany({ where: { memberId: viewer.memberId }, include: { ndaVersion: true }, orderBy: { signedAt: 'desc' } }),
   ])
 
@@ -95,6 +97,37 @@ export default async function SettingsPage() {
             </div>
             <SubmitButton variant="secondary">Save preferences</SubmitButton>
           </ActionForm>
+        </Card>
+
+        <Card title="WhatsApp">
+          {!isWhatsAppConfigured() ? (
+            <p className="mb-3 rounded-2xl bg-cream-100 px-3 py-2 text-xs text-cream-800">WhatsApp isn&apos;t connected for KKB yet. You can save your choice now; it takes effect once an admin connects it.</p>
+          ) : null}
+          <p className="mb-3 text-xs text-ink-500">
+            Uses {member.whatsapp ?? member.phone}. Turning this on lets you get notifications on WhatsApp and log outreach and donations by message.
+          </p>
+          <ActionForm action={updateWhatsappPrefsAction} className="space-y-3">
+            <label className="flex items-center gap-3 text-sm font-medium text-ink-900">
+              <input type="checkbox" name="whatsappOptIn" defaultChecked={user.whatsappOptIn} className="h-4 w-4 accent-forest-600" />
+              Use WhatsApp with KKB
+            </label>
+            <details>
+              <summary className="cursor-pointer text-xs font-medium text-forest-700">Which notifications</summary>
+              <div className="mt-2 space-y-2">
+                {Object.entries(NOTIFICATION_TYPES).map(([type, label]) => (
+                  <label key={type} className="flex items-center gap-3 text-sm text-ink-700">
+                    <input type="checkbox" name="whatsapp" value={type} defaultChecked={!user.whatsappOptOuts.includes(type)} className="h-4 w-4 accent-forest-600" />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </details>
+            <SubmitButton variant="secondary">Save WhatsApp settings</SubmitButton>
+          </ActionForm>
+          <details className="mt-4">
+            <summary className="cursor-pointer text-xs font-medium text-forest-700">Quick-logging commands</summary>
+            <pre className="mt-2 whitespace-pre-wrap rounded-2xl bg-cream-50 p-3 text-xs text-ink-700">{HELP_TEXT}</pre>
+          </details>
         </Card>
 
         <Card title="My agreement and data">

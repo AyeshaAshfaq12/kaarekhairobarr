@@ -232,3 +232,22 @@ export async function deleteChecklistItemAction(_: ActionState, formData: FormDa
     return { ok: true, message: 'Item deleted.' }
   })
 }
+
+// ---------- WhatsApp (Phase 4) ----------
+
+/** Opt in to WhatsApp notifications and quick logging; per-type opt-outs like email. */
+export async function updateWhatsappPrefsAction(_: ActionState, formData: FormData): Promise<ActionState> {
+  return runAction(async () => {
+    const viewer = await requireActiveViewer()
+    const whatsappOptIn = formData.get('whatsappOptIn') === 'on'
+    const enabled = new Set(formData.getAll('whatsapp').map(String))
+    const whatsappOptOuts = Object.keys(NOTIFICATION_TYPES).filter((type) => !enabled.has(type))
+    const before = await prisma.user.findUniqueOrThrow({ where: { id: viewer.userId }, select: { whatsappOptIn: true, whatsappOptOuts: true } })
+    const { ip } = getRequestMeta()
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({ where: { id: viewer.userId }, data: { whatsappOptIn, whatsappOptOuts } })
+      await writeAudit(tx, { actorId: viewer.userId, action: 'update_whatsapp_prefs', entity: 'User', entityId: viewer.userId, before, after: { whatsappOptIn, whatsappOptOuts }, ip })
+    })
+    return { ok: true, message: whatsappOptIn ? 'WhatsApp turned on.' : 'WhatsApp turned off.' }
+  })
+}

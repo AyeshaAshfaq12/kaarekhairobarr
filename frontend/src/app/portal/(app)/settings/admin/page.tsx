@@ -3,7 +3,8 @@ import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/portal/db'
 import { can, requireActiveViewer } from '@/lib/portal/rbac'
 import { getSettings } from '@/lib/portal/settings'
-import { formatDate } from '@/lib/portal/time'
+import { formatDate, formatDateTime } from '@/lib/portal/time'
+import { isWhatsAppConfigured } from '@/lib/portal/whatsapp'
 import { ActionForm, Field, SubmitButton } from '@/components/portal/ActionForm'
 import { Badge, Card, PageHeader } from '@/components/portal/ui'
 import {
@@ -43,10 +44,12 @@ function ItemFields({ item }: { item?: { title: string; description: string | nu
 export default async function OrgSettingsPage() {
   const viewer = await requireActiveViewer()
   if (!can(viewer, 'settings', 'edit')) notFound()
-  const [settings, nda, items] = await Promise.all([
+  const [settings, nda, items, waMessages, waOptedIn] = await Promise.all([
     getSettings(),
     prisma.ndaVersion.findFirst({ where: { isActive: true }, orderBy: { version: 'desc' }, include: { _count: { select: { signatures: true } } } }),
     prisma.onboardingItem.findMany({ orderBy: { order: 'asc' } }),
+    viewer.isAdmin ? prisma.whatsAppMessage.findMany({ orderBy: { createdAt: 'desc' }, take: 20 }) : Promise.resolve([]),
+    prisma.user.count({ where: { whatsappOptIn: true, disabledAt: null } }),
   ])
 
   return (
@@ -122,6 +125,34 @@ export default async function OrgSettingsPage() {
                 <SubmitButton variant="secondary">Add item</SubmitButton>
               </ActionForm>
             </details>
+          </Card>
+        ) : null}
+
+        {viewer.isAdmin ? (
+          <Card title="WhatsApp (Cloud API)">
+            <p className="text-sm text-ink-700">
+              Status: <span className="font-semibold">{isWhatsAppConfigured() ? 'Connected' : 'Not configured'}</span> · {waOptedIn} member(s) opted in.
+            </p>
+            {!isWhatsAppConfigured() ? (
+              <p className="mt-2 text-xs text-ink-500">
+                Set WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_APP_SECRET, WHATSAPP_VERIFY_TOKEN and an approved template (WHATSAPP_TEMPLATE, two body
+                parameters). Point the Meta webhook at /api/portal/whatsapp/webhook.
+              </p>
+            ) : null}
+            {waMessages.length ? (
+              <ul className="mt-4 divide-y divide-ink-900/5 text-xs">
+                {waMessages.map((message) => (
+                  <li key={message.id} className="flex flex-wrap justify-between gap-2 py-2">
+                    <span className="min-w-0 truncate">
+                      <span className="font-semibold">{message.direction === 'IN' ? '←' : '→'} {message.phone}</span> {message.body.slice(0, 80)}
+                    </span>
+                    <span className={message.status === 'failed' || message.status === 'rejected' ? 'text-clay-600' : 'text-ink-500'}>
+                      {message.status} · {formatDateTime(message.createdAt)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </Card>
         ) : null}
 

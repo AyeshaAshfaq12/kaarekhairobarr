@@ -36,6 +36,7 @@ export default defineConfig({
     url: `http://localhost:${PORT}/portal/login`,
     reuseExistingServer: false,
     timeout: 120_000,
-    env: { DATABASE_URL: process.env.E2E_DATABASE_URL ?? '' },
+    // WhatsApp webhook secrets for the Phase 4 specs (outbound sending stays off: no token).
+    env: { DATABASE_URL: process.env.E2E_DATABASE_URL ?? '', WHATSAPP_APP_SECRET: 'e2e-whatsapp-secret', WHATSAPP_VERIFY_TOKEN: 'e2e-verify' },
   },
 })

@@ -59,3 +59,6 @@ export const PNG = {
   mimeType: 'image/png',
   buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64'),
 }
+
+// Shared with playwright.config.ts, which passes it to the test server.
+export const WHATSAPP_TEST_SECRET = 'e2e-whatsapp-secret'
