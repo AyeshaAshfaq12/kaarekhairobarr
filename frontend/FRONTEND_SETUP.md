@@ -464,3 +464,45 @@ npm run type-check
 ---
 
 Built with ❤️ for Kaare Khair o Barr
+
+---
+
+## Member Portal (`/portal`)
+
+A members-only portal built from `docs/KKB Portal — Build Spec.pdf`. It lives in this same Next.js app:
+the public site moved into the `src/app/(site)` route group (URLs unchanged) and the portal is under
+`src/app/portal`. Server code lives in `src/lib/portal`.
+
+**Status: Phase 1 (Foundation) is done.** That covers auth, sign-up → email verification → NDA → admin
+approval, the onboarding checklist, the hierarchy and org tree, roles/RBAC CRUD, teams, offboarding,
+the audit log, in-app and email notifications, settings and "download my data". Phases 2–4 (money,
+work/events/reports, WhatsApp) come next. Their tables already exist in the schema.
+
+### Setup
+
+```bash
+cp .env.example .env.local      # fill DATABASE_URL and CNIC_ENCRYPTION_KEY at minimum
+npm install                     # also runs prisma generate
+npm run db:deploy               # apply migrations (or `npm run db:migrate` while developing)
+npm run db:seed                 # roles, teams, NDA v1, checklist, demo people
+npm run dev                     # http://localhost:3000/portal
+```
+
+Seed logins: `admin@kkb.test` (SuperAdmin), `finance@kkb.test`, `lead1..3@kkb.test`, `sub1..2@kkb.test`,
+`m1..m15@kkb.test`, all with password `kkb-portal-dev` (override with `SEED_PASSWORD`).
+Without `RESEND_API_KEY`, emails (verification links, resets, invites) are printed to the server log.
+Without `S3_BUCKET`, uploads go to `./.uploads` (gitignored).
+
+### Tests
+
+```bash
+npm test                        # Vitest: authorize() across every scope, validation, crypto, months;
+                                # the subtree CTE tests run when TEST_DATABASE_URL is set
+npm run build && npm run test:e2e   # Playwright at 375 px. Needs E2E_DATABASE_URL (defaults to
+                                    # TEST_DATABASE_URL), which is WIPED and re-seeded on every run
+```
+
+### Cron
+
+`vercel.json` calls `/api/portal/cron/purge-unverified` daily (needs `CRON_SECRET`). It purges
+accounts left unverified for 7+ days.

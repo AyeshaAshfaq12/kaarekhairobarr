@@ -1,0 +1,5 @@
+{
+  "crons": [
+    { "path": "/api/portal/cron/purge-unverified", "schedule": "0 22 * * *" }
+  ]
+}

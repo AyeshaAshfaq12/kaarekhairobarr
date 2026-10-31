@@ -1,0 +1,725 @@
+// KKB Portal data model (build spec §4).
+// Money is stored as integer PKR. Timestamps are UTC; months are "YYYY-MM" in Asia/Karachi.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Enums ----------
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum MemberStatus {
+  PENDING_NDA
+  PENDING_APPROVAL
+  ACTIVE
+  INACTIVE
+  LEFT
+  REJECTED
+}
+
+enum Module {
+  members
+  onboarding
+  roles
+  teams
+  tasks
+  cases
+  beneficiaries
+  donors
+  donations
+  targets
+  events
+  expenses
+  reports
+  audit
+  settings
+}
+
+enum Action {
+  view
+  create
+  edit
+  delete
+  verify
+  approve
+  assign
+  export
+}
+
+enum Scope {
+  own
+  assigned
+  team
+  subtree
+  all
+}
+
+enum TokenPurpose {
+  EMAIL_VERIFY
+  PASSWORD_RESET
+  INVITE
+}
+
+enum OnboardingCompleter {
+  MEMBER
+  LEAD
+  SYSTEM
+}
+
+enum CaseCategory {
+  RATION
+  DIALYSIS
+  CANCER
+  DEBT
+  EDUCATION
+  EVENT
+  OTHER
+}
+
+enum CaseStatus {
+  DRAFT
+  OPEN
+  FUNDED
+  CLOSED
+  CANCELLED
+}
+
+enum Channel {
+  WHATSAPP
+  CALL
+  IN_PERSON
+  SOCIAL
+  OTHER
+}
+
+enum OutreachOutcome {
+  CONTACTED
+  PROMISED
+  DONATED
+  DECLINED
+  NO_RESPONSE
+}
+
+enum PayMethod {
+  EASYPAISA
+  JAZZCASH
+  BANK
+  CASH
+  OTHER
+}
+
+enum DonationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum EventStatus {
+  PLANNING
+  LIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum ExpenseStatus {
+  SUBMITTED
+  APPROVED
+  REJECTED
+  REIMBURSED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  IN_REVIEW
+  BLOCKED
+  DONE
+  CANCELLED
+}
+
+// ---------- People & access ----------
+
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  passwordHash    String
+  emailVerifiedAt DateTime?
+  disabledAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  member        Member?
+  roles         UserRole[]     @relation("UserRoles")
+  grantedRoles  UserRole[]     @relation("RoleGrants")
+  sessions      Session[]
+  tokens        AuthToken[]
+  notifications Notification[]
+  auditEntries  AuditLog[]
+  emailOptOuts  String[]       @default([]) // notification types with email turned off
+}
+
+model Session {
+  id         String   @id @default(cuid())
+  tokenHash  String   @unique
+  userId     String
+  expiresAt  DateTime
+  lastSeenAt DateTime @default(now())
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// Single-use tokens for email verification, password reset and invites.
+model AuthToken {
+  id         String       @id @default(cuid())
+  tokenHash  String       @unique
+  purpose    TokenPurpose
+  userId     String?
+  email      String
+  payload    Json?
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime     @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([email, purpose])
+}
+
+model LoginAttempt {
+  id        String   @id @default(cuid())
+  email     String
+  ip        String
+  success   Boolean
+  at        DateTime @default(now())
+
+  @@index([email, ip, at])
+}
+
+model Member {
+  id                       String       @id @default(cuid())
+  userId                   String       @unique
+  fullName                 String
+  fatherName               String?
+  gender                   Gender
+  dateOfBirth              DateTime
+  phone                    String
+  whatsapp                 String?
+  city                     String
+  address                  String
+  cnicEncrypted            String
+  cnicLast4                String
+  institutionOrJob         String?
+  skills                   String[]
+  availabilityHoursPerWeek Int?
+  emergencyName            String
+  emergencyPhone           String
+  photoKey                 String?
+  howHeard                 String?
+  referredById             String?
+  status                   MemberStatus @default(PENDING_NDA)
+  reportsToId              String?
+  joinedAt                 DateTime?
+  leftAt                   DateTime?
+  leftReason               String?
+  rejectionReason          String?
+  deletedAt                DateTime?
+  createdAt                DateTime     @default(now())
+  updatedAt                DateTime     @updatedAt
+
+  user               User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reportsTo          Member?              @relation("Hierarchy", fields: [reportsToId], references: [id])
+  reports            Member[]             @relation("Hierarchy")
+  referredBy         Member?              @relation("Referrals", fields: [referredById], references: [id])
+  referrals          Member[]             @relation("Referrals")
+  teams              TeamMembership[]
+  ndaSignatures      NdaSignature[]
+  onboarding         OnboardingProgress[] @relation("ProgressMember")
+  onboardingVerified OnboardingProgress[] @relation("ProgressVerifier")
+  caseAssignments    CaseAssignment[]
+  donorLinks         DonorLink[]
+  outreach           Outreach[]           @relation("OutreachMember")
+  outreachLogged     Outreach[]           @relation("OutreachLogger")
+  donationCredits    DonationCredit[]
+  targets            Target[]             @relation("MemberTargets")
+  eventsLed          Event[]              @relation("EventLead")
+  responsibilities   EventResponsibility[]
+  expensesPaid       Expense[]            @relation("ExpensePaidBy")
+  tasksAssigned      Task[]               @relation("TaskAssignee")
+
+  @@index([reportsToId])
+  @@index([status])
+}
+
+model Role {
+  id          String       @id @default(cuid())
+  name        String       @unique
+  description String?
+  isSystem    Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  permissions Permission[]
+  users       UserRole[]
+}
+
+model Permission {
+  id     String @id @default(cuid())
+  roleId String
+  module Module
+  action Action
+  scope  Scope
+
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, module, action])
+}
+
+model UserRole {
+  id          String   @id @default(cuid())
+  userId      String
+  roleId      String
+  grantedById String?
+  createdAt   DateTime @default(now())
+
+  user      User  @relation("UserRoles", fields: [userId], references: [id], onDelete: Cascade)
+  role      Role  @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  grantedBy User? @relation("RoleGrants", fields: [grantedById], references: [id])
+
+  @@unique([userId, roleId])
+}
+
+model Team {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  isGeneral   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  memberships TeamMembership[]
+  targets     Target[]         @relation("TeamTargets")
+  tasks       Task[]
+}
+
+model TeamMembership {
+  id        String   @id @default(cuid())
+  teamId    String
+  memberId  String
+  isLead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  member Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, memberId])
+}
+
+// ---------- Onboarding ----------
+
+model NdaVersion {
+  id          String   @id @default(cuid())
+  version     Int      @unique
+  title       String
+  body        String
+  isActive    Boolean
+  publishedAt DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  signatures NdaSignature[]
+}
+
+model NdaSignature {
+  id           String   @id @default(cuid())
+  memberId     String
+  ndaVersionId String
+  typedName    String
+  bodySha256   String
+  signedAt     DateTime
+  ip           String
+  userAgent    String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  member     Member     @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  ndaVersion NdaVersion @relation(fields: [ndaVersionId], references: [id])
+
+  @@unique([memberId, ndaVersionId])
+}
+
+// Checklist template. `autoKey` lets the system tick an item (e.g. FIRST_OUTREACH).
+model OnboardingItem {
+  id          String              @id @default(cuid())
+  title       String
+  description String?
+  order       Int
+  isActive    Boolean             @default(true)
+  completedBy OnboardingCompleter @default(MEMBER)
+  autoKey     String?             @unique
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  progress OnboardingProgress[]
+}
+
+model OnboardingProgress {
+  id           String    @id @default(cuid())
+  memberId     String
+  itemId       String
+  doneAt       DateTime?
+  verifiedById String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  member     Member         @relation("ProgressMember", fields: [memberId], references: [id], onDelete: Cascade)
+  item       OnboardingItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  verifiedBy Member?        @relation("ProgressVerifier", fields: [verifiedById], references: [id])
+
+  @@unique([memberId, itemId])
+}
+
+// ---------- Cases & money (phase 2) ----------
+
+model Case {
+  id            String       @id @default(cuid())
+  title         String
+  category      CaseCategory
+  description   String
+  targetAmount  Int
+  status        CaseStatus   @default(DRAFT)
+  startDate     DateTime
+  endDate       DateTime?
+  createdById   String
+  beneficiaryId String?
+  eventId       String?      @unique
+  cancelReason  String?
+  deletedAt     DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  beneficiary Beneficiary?     @relation(fields: [beneficiaryId], references: [id])
+  event       Event?           @relation(fields: [eventId], references: [id])
+  assignments CaseAssignment[]
+  outreach    Outreach[]
+  donations   Donation[]
+  tasks       Task[]
+}
+
+model CaseAssignment {
+  id        String   @id @default(cuid())
+  caseId    String
+  memberId  String
+  createdAt DateTime @default(now())
+
+  case   Case   @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  member Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([caseId, memberId])
+}
+
+model Beneficiary {
+  id            String   @id @default(cuid())
+  fullName      String
+  phone         String?
+  cnicEncrypted String?
+  city          String?
+  condition     String?
+  notes         String?
+  documentKeys  String[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  cases Case[]
+}
+
+model Donor {
+  id              String    @id @default(cuid())
+  fullName        String
+  phone           String?
+  phoneNormalized String?   @unique
+  email           String?
+  city            String?
+  relationNote    String?
+  createdById     String
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  links     DonorLink[]
+  outreach  Outreach[]
+  donations Donation[]
+}
+
+model DonorLink {
+  id         String   @id @default(cuid())
+  donorId    String
+  memberId   String
+  historical Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  donor  Donor  @relation(fields: [donorId], references: [id], onDelete: Cascade)
+  member Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([donorId, memberId])
+}
+
+model Outreach {
+  id             String          @id @default(cuid())
+  memberId       String
+  donorId        String
+  caseId         String?
+  contactedAt    DateTime
+  channel        Channel
+  outcome        OutreachOutcome
+  promisedAmount Int?
+  followUpAt     DateTime?
+  notes          String?
+  loggedById     String
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  member   Member @relation("OutreachMember", fields: [memberId], references: [id])
+  loggedBy Member @relation("OutreachLogger", fields: [loggedById], references: [id])
+  donor    Donor  @relation(fields: [donorId], references: [id])
+  case     Case?  @relation(fields: [caseId], references: [id])
+
+  @@index([memberId, contactedAt])
+}
+
+model Donation {
+  id              String         @id @default(cuid())
+  donorId         String
+  caseId          String
+  amount          Int
+  receivedAt      DateTime
+  method          PayMethod
+  transactionRef  String?
+  proofKey        String?
+  cashReceivedNote String?
+  status          DonationStatus @default(PENDING)
+  loggedById      String
+  verifiedById    String?
+  verifiedAt      DateTime?
+  rejectionReason String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  donor   Donor            @relation(fields: [donorId], references: [id])
+  case    Case             @relation(fields: [caseId], references: [id])
+  credits DonationCredit[]
+
+  @@index([status, receivedAt])
+}
+
+model DonationCredit {
+  id         String   @id @default(cuid())
+  donationId String
+  memberId   String
+  createdAt  DateTime @default(now())
+
+  donation Donation @relation(fields: [donationId], references: [id], onDelete: Cascade)
+  member   Member   @relation(fields: [memberId], references: [id])
+
+  @@unique([donationId, memberId])
+}
+
+model Target {
+  id             String   @id @default(cuid())
+  month          String // "YYYY-MM"
+  memberId       String?
+  teamId         String?
+  amountTarget   Int
+  outreachTarget Int?
+  setById        String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  member Member? @relation("MemberTargets", fields: [memberId], references: [id], onDelete: Cascade)
+  team   Team?   @relation("TeamTargets", fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([month, memberId])
+  @@unique([month, teamId])
+}
+
+model MonthlyMetric {
+  id        String    @id @default(cuid())
+  month     String
+  memberId  String?
+  teamId    String?
+  scope     String // member | team | org
+  data      Json
+  frozenAt  DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([month, scope, memberId, teamId])
+}
+
+// ---------- Events (phase 3) ----------
+
+model Event {
+  id          String      @id @default(cuid())
+  name        String
+  description String?
+  startsAt    DateTime
+  venue       String?
+  leadId      String
+  budget      Int
+  status      EventStatus @default(PLANNING)
+  surplusNote String?
+  deletedAt   DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  lead             Member                @relation("EventLead", fields: [leadId], references: [id])
+  case             Case?
+  responsibilities EventResponsibility[]
+  expenses         Expense[]
+  tasks            Task[]
+}
+
+model EventResponsibility {
+  id        String     @id @default(cuid())
+  eventId   String
+  memberId  String
+  title     String
+  notes     String?
+  status    TaskStatus @default(TODO)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  event  Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  member Member @relation(fields: [memberId], references: [id])
+}
+
+model Expense {
+  id              String        @id @default(cuid())
+  eventId         String
+  title           String
+  category        String
+  amount          Int
+  spentAt         DateTime
+  paidById        String
+  receiptKey      String
+  status          ExpenseStatus @default(SUBMITTED)
+  reviewedById    String?
+  reviewedAt      DateTime?
+  rejectionReason String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  event  Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  paidBy Member @relation("ExpensePaidBy", fields: [paidById], references: [id])
+}
+
+// ---------- Work (phase 3) ----------
+
+model Task {
+  id               String     @id @default(cuid())
+  title            String
+  description      String?
+  teamId           String
+  assigneeId       String?
+  createdById      String
+  dueAt            DateTime?
+  priority         Priority   @default(MEDIUM)
+  status           TaskStatus @default(TODO)
+  eventId          String?
+  caseId           String?
+  completedAt      DateTime?
+  recurringMonthly Boolean    @default(false)
+  deletedAt        DateTime?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  team     Team          @relation(fields: [teamId], references: [id])
+  assignee Member?       @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  event    Event?        @relation(fields: [eventId], references: [id])
+  case     Case?         @relation(fields: [caseId], references: [id])
+  comments TaskComment[]
+}
+
+model TaskComment {
+  id             String   @id @default(cuid())
+  taskId         String
+  authorId       String
+  body           String
+  attachmentKeys String[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+}
+
+// ---------- System ----------
+
+model FileUpload {
+  id           String   @id @default(cuid())
+  key          String   @unique
+  mime         String
+  sizeBytes    Int
+  uploadedById String
+  purpose      String
+  createdAt    DateTime @default(now())
+}
+
+// Append-only. There is intentionally no update or delete path in code.
+model AuditLog {
+  id       String   @id @default(cuid())
+  actorId  String?
+  action   String
+  entity   String
+  entityId String
+  before   Json?
+  after    Json?
+  reason   String?
+  ip       String?
+  at       DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entity, entityId])
+  @@index([actorId])
+  @@index([at])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  type      String
+  payload   Json
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+}
+
+model Setting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
