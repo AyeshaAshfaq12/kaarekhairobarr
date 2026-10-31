@@ -23,10 +23,10 @@ import type { ActionState } from '@/lib/portal/validation'
 
 function parseGrid(formData: FormData): PermissionGrant[] {
   const grants: PermissionGrant[] = []
-  for (const module of MODULES) {
+  for (const moduleName of MODULES) {
     for (const action of ACTIONS) {
-      const value = formData.get(`perm:${module}.${action}`)
-      if (value && SCOPES.includes(value as ScopeName)) grants.push({ module, action, scope: value as ScopeName })
+      const value = formData.get(`perm:${moduleName}.${action}`)
+      if (value && SCOPES.includes(value as ScopeName)) grants.push({ module: moduleName, action, scope: value as ScopeName })
     }
   }
   return grants
@@ -46,16 +46,21 @@ export async function saveRoleAction(_: ActionState, formData: FormData): Promis
         description: z.string().trim().max(300).optional().transform((value) => value || null),
       })
       .parse({ name: formData.get('name'), description: formData.get('description') ?? undefined })
-    const grants = parseGrid(formData)
-
     const existing = roleId ? await prisma.role.findUniqueOrThrow({ where: { id: roleId }, include: { permissions: true } }) : null
+
+    // Existing grants wider than the editor's own access are locked in the editor (disabled
+    // selects aren't submitted), so carry them over unchanged instead of silently dropping them.
+    const locked = existing ? ungrantable(viewer.perms, existing.permissions as PermissionGrant[]) : []
+    const lockedKeys = new Set(locked.map((grant) => `${grant.module}.${grant.action}`))
+    const grants = [...parseGrid(formData).filter((grant) => !lockedKeys.has(`${grant.module}.${grant.action}`)), ...locked.map(({ module, action, scope }) => ({ module, action, scope }))]
+    const editable = grants.filter((grant) => !lockedKeys.has(`${grant.module}.${grant.action}`))
     if (existing?.name === SYSTEM_ROLE.SUPER_ADMIN) throw new UserError('SuperAdmin cannot be edited.')
     if (input.name === SYSTEM_ROLE.SUPER_ADMIN) throw new UserError('That name is reserved.')
     const clash = await prisma.role.findFirst({ where: { name: { equals: input.name, mode: 'insensitive' }, NOT: roleId ? { id: roleId } : undefined } })
     if (clash) return { ok: false, fieldErrors: { name: ['A role with this name already exists'] } }
 
     // Hard rule: nobody can grant a permission or scope they don't hold themselves.
-    const blocked = ungrantable(viewer.perms, grants)
+    const blocked = ungrantable(viewer.perms, editable)
     if (blocked.length) {
       throw new ForbiddenError(`You can't grant permissions you don't hold: ${describe(blocked).slice(0, 5).join(', ')}${blocked.length > 5 ? '…' : ''}`)
     }

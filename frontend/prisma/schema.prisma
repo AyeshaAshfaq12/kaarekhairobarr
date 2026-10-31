@@ -407,6 +407,8 @@ model OnboardingProgress {
 
 model Case {
   id            String       @id @default(cuid())
+  /// Permanent, human-friendly number (#12) used on WhatsApp and in lists. Never reused.
+  number        Int          @unique @default(autoincrement())
   title         String
   category      CaseCategory
   description   String

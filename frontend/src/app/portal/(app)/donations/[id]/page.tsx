@@ -113,6 +113,7 @@ export default async function DonationPage({ params, searchParams }: { params: {
               isImage ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <a href={`/api/portal/files/donation-proof/${donation.id}`} target="_blank" rel="noreferrer">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- private, auth-checked file route; next/image can't optimise it */}
                   <img src={`/api/portal/files/donation-proof/${donation.id}`} alt="Payment proof" className="max-h-[480px] w-full rounded-2xl object-contain" />
                 </a>
               ) : (

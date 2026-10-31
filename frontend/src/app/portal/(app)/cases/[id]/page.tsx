@@ -88,7 +88,7 @@ export default async function CasePage({ params, searchParams }: { params: { id:
   return (
     <>
       <PageHeader
-        title={kase.title}
+        title={`#${kase.number} ${kase.title}`}
         eyebrow={humanize(kase.category)}
         description={
           <span className="flex flex-wrap items-center gap-2">

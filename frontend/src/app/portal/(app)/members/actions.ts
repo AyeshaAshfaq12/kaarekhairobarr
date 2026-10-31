@@ -93,7 +93,7 @@ export async function approveMemberAction(_: ActionState, formData: FormData): P
     })
 
     // The applicant's card disappears from the queue, so confirm via a notice on reload.
-    redirect(`/portal/members/pending?notice=${encodeURIComponent(`${member.fullName} approved.`)}`)
+    redirect(`/portal/members/pending?approved=${member.id}`)
   })
 }
 
@@ -132,7 +132,7 @@ export async function rejectMemberAction(_: ActionState, formData: FormData): Pr
     })
     await notify(member.userId, 'APPLICATION_REJECTED', { title: 'Your application was not approved', body: reason.data })
 
-    redirect(`/portal/members/pending?notice=${encodeURIComponent(`${member.fullName} rejected.`)}`)
+    redirect(`/portal/members/pending?rejected=${member.id}`)
   })
 }
 

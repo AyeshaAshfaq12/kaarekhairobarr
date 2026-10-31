@@ -10,9 +10,21 @@ import { approveMemberAction, rejectMemberAction } from '../actions'
 
 export const metadata: Metadata = { title: 'Pending approvals | KKB Portal' }
 
-export default async function PendingApprovalsPage({ searchParams }: { searchParams: { notice?: string } }) {
+export default async function PendingApprovalsPage({ searchParams }: { searchParams: { approved?: string; rejected?: string } }) {
   const viewer = await requireActiveViewer()
   if (!viewer.isAdmin || !can(viewer, 'members', 'approve')) notFound()
+
+  // The confirmation is built from the member record, never from free text in the URL.
+  const decidedId = searchParams.approved ?? searchParams.rejected
+  const decided = decidedId
+    ? await prisma.member.findUnique({ where: { id: decidedId }, select: { fullName: true, status: true } })
+    : null
+  const notice =
+    decided && searchParams.approved && decided.status === 'ACTIVE'
+      ? `${decided.fullName} approved.`
+      : decided && searchParams.rejected && decided.status === 'REJECTED'
+        ? `${decided.fullName} rejected.`
+        : null
 
   const [applicants, leads, teams, roles] = await Promise.all([
     prisma.member.findMany({
@@ -32,9 +44,9 @@ export default async function PendingApprovalsPage({ searchParams }: { searchPar
   return (
     <>
       <PageHeader title="Pending approvals" description="Applicants who verified their email and signed the agreement." />
-      {searchParams.notice ? (
+      {notice ? (
         <p role="status" className="mb-5 rounded-2xl bg-forest-50 px-4 py-3 text-sm font-medium text-forest-700">
-          {searchParams.notice}
+          {notice}
         </p>
       ) : null}
       {applicants.length === 0 ? <EmptyState>No one is waiting for approval.</EmptyState> : null}

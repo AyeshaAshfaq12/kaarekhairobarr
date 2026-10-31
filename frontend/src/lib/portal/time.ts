@@ -13,11 +13,43 @@ export function monthKey(date: Date = new Date()) {
 }
 
 // UTC bounds of a Karachi month. PKT is UTC+5 with no DST.
+/**
+ * UTC bounds of a Karachi month ("2026-01") or an inclusive month range ("2026-01..2026-03",
+ * used by reports, §10.2).
+ */
 export function monthRange(key: string) {
-  const [year, month] = key.split('-').map(Number)
+  const [first, last = first] = key.split('..')
+  const [year, month] = first.split('-').map(Number)
+  const [lastYear, lastMonth] = last.split('-').map(Number)
   const start = new Date(Date.UTC(year, month - 1, 1, -5))
-  const end = new Date(Date.UTC(year, month, 1, -5))
+  const end = new Date(Date.UTC(lastYear, lastMonth, 1, -5))
   return { start, end }
+}
+
+export const isMonthSpan = (key: string) => key.includes('..')
+
+/** Every month key in a month or month range, oldest first. */
+export function periodMonths(key: string) {
+  const [first, last = first] = key.split('..')
+  const months: string[] = []
+  let [year, month] = first.split('-').map(Number)
+  while (`${year}-${String(month).padStart(2, '0')}` <= last && months.length < 120) {
+    months.push(`${year}-${String(month).padStart(2, '0')}`)
+    month += 1
+    if (month > 12) [year, month] = [year + 1, 1]
+  }
+  return months
+}
+
+/** "2026-01..2026-03" when the range is valid and at most `maxMonths` long; otherwise just `from`. */
+export function makePeriod(from: string, to: string | undefined, maxMonths = 12) {
+  if (!to || !/^\d{4}-\d{2}$/.test(to) || to <= from) return from
+  const span = `${from}..${to}`
+  return periodMonths(span).length <= maxMonths ? span : from
+}
+
+export function formatPeriod(key: string) {
+  return key.replace('..', ' to ')
 }
 
 // "YYYY-MM-DD" of a moment in Asia/Karachi.

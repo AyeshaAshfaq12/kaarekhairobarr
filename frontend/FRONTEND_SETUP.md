@@ -500,12 +500,14 @@ Seed logins: `admin@kkb.test` (SuperAdmin), `finance@kkb.test`, `lead1..3@kkb.te
 ### Tests
 
 ```bash
+npm run lint                    # ESLint (next/core-web-vitals)
 npm test                        # Vitest: authorize() across every scope, every §9.2 metric, rollups,
                                 # validation, crypto, months, WhatsApp parser and signatures.
                                 # DB-backed suites (subtree CTE, donor dedupe) run when
                                 # TEST_DATABASE_URL is set
 npm run build && npm run test:e2e   # Playwright at 375 px: onboarding, access, offboarding, money,
-                                    # events/expenses, tasks, exports, WhatsApp webhook, and a smoke
+                                    # events/expenses, tasks, exports, report ranges, role locks,
+                                    # WhatsApp webhook, and a smoke
                                     # test of every screen. Needs E2E_DATABASE_URL (defaults to
                                     # TEST_DATABASE_URL), which is WIPED and re-seeded on every run
 ```

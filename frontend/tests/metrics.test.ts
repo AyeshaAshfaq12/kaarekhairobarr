@@ -6,6 +6,7 @@ import {
   isOverdue,
   monthSeries,
   previousMonth,
+  previousPeriod,
   statusBand,
   type DonationRow,
   type OutreachRow,
@@ -166,6 +167,11 @@ describe('month helpers', () => {
   it('previousMonth crosses years', () => {
     expect(previousMonth('2026-01')).toBe('2025-12')
     expect(previousMonth('2026-03', 3)).toBe('2025-12')
+  })
+  it('previousPeriod keeps the same length', () => {
+    expect(previousPeriod('2026-03')).toBe('2026-02')
+    expect(previousPeriod('2026-01..2026-03')).toBe('2025-10..2025-12')
+    expect(previousPeriod('2025-12..2026-01')).toBe('2025-10..2025-11')
   })
   it('monthSeries is oldest first', () => expect(monthSeries('2026-02', 3)).toEqual(['2025-12', '2026-01', '2026-02']))
 })

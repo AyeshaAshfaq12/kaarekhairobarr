@@ -49,9 +49,18 @@ test('opted-in members log outreach and cash donations by WhatsApp', async ({ pa
   expect(await prisma.outreach.count({ where: { donorId: donor.id, outcome: 'DONATED' } })).toBe(1)
   expect(await prisma.auditLog.count({ where: { entity: 'Donation', entityId: logged.id, actor: { email: 'm5@kkb.test' } } })).toBe(1)
 
+  // Case numbers are permanent (Case.number): #5 is the seeded draft, so it is refused even
+  // though only four cases come before the event case, and #6 is always the event case.
+  await send(request, webhookBody(from, `donation ${donorPhone} 1000 cash #5 handed to Sana`))
+  expect(await prisma.donation.count({ where: { donorId: donor.id } })).toBe(1)
+  await send(request, webhookBody(from, `donation ${donorPhone} 1500 cash #6 handed to Sana`))
+  const eventCase = await prisma.case.findUniqueOrThrow({ where: { number: 6 } })
+  expect(eventCase.category).toBe('EVENT')
+  expect(await prisma.donation.count({ where: { donorId: donor.id, caseId: eventCase.id, amount: 1500 } })).toBe(1)
+
   // A non-cash donation without a screenshot is refused; nothing is logged.
   await send(request, webhookBody(from, `donation ${donorPhone} 3000 easypaisa TX9 #1`))
-  expect(await prisma.donation.count({ where: { donorId: donor.id } })).toBe(1)
+  expect(await prisma.donation.count({ where: { donorId: donor.id } })).toBe(2)
 
   // The same WhatsApp message id is only processed once.
   const id = `wamid.dup.${Date.now()}`

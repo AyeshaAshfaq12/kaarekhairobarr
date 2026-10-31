@@ -2,6 +2,9 @@
 // Phase 2–3 seed data (§13.2): 5 cases (one per category) plus an event case, 40 donors,
 // ~120 outreach records and ~60 donations in mixed states across 3 months, targets, tasks in
 // every status, and one event with responsibilities and expenses. Runs once (skips if cases exist).
+import { mkdir, writeFile } from 'fs/promises'
+import path from 'path'
+import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import type { PrismaClient } from '@prisma/client'
 import { encryptString } from '../src/lib/portal/crypto'
 import { previousMonth } from '../src/lib/portal/metrics-core'
@@ -19,7 +22,47 @@ function rng(seed: number) {
 const FIRST = ['Ahmed', 'Sara', 'Imran', 'Nadia', 'Kamran', 'Farah', 'Tariq', 'Sadia', 'Asad', 'Huma', 'Rizwan', 'Mehwish', 'Shahid', 'Lubna', 'Adeel', 'Saima', 'Naveed', 'Uzma', 'Waseem', 'Bushra']
 const LAST = ['Chaudhry', 'Butt', 'Sheikh', 'Mirza', 'Hashmi', 'Gill', 'Rana', 'Abbasi', 'Siddiqui', 'Bhatti']
 
+// A one-page PDF reading "Demo receipt", so seeded expense receipts open like real uploads.
+const PLACEHOLDER_PDF = [
+  '%PDF-1.4',
+  '1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj',
+  '2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj',
+  '3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 300 120] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >> endobj',
+  '4 0 obj << /Length 54 >> stream',
+  'BT /F1 18 Tf 40 55 Td (Demo receipt - seed data) Tj ET',
+  'endstream endobj',
+  '5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj',
+  'trailer << /Root 1 0 R >>',
+  '%%EOF',
+].join('\n')
+
+/** Stores a seed file where storeUpload() would (S3 when configured, else .uploads/) and registers it. */
+async function seedFile(prisma: PrismaClient, key: string, uploadedById: string) {
+  const bytes = Buffer.from(PLACEHOLDER_PDF, 'latin1')
+  if (process.env.S3_BUCKET) {
+    const client = new S3Client({
+      region: process.env.S3_REGION || 'auto',
+      endpoint: process.env.S3_ENDPOINT || undefined,
+      forcePathStyle: !!process.env.S3_ENDPOINT,
+      credentials: { accessKeyId: process.env.S3_ACCESS_KEY_ID || '', secretAccessKey: process.env.S3_SECRET_ACCESS_KEY || '' },
+    })
+    await client.send(new PutObjectCommand({ Bucket: process.env.S3_BUCKET, Key: key, Body: bytes, ContentType: 'application/pdf' }))
+  } else {
+    const target = path.join(process.cwd(), '.uploads', key)
+    await mkdir(path.dirname(target), { recursive: true })
+    await writeFile(target, bytes)
+  }
+  await prisma.fileUpload.upsert({
+    where: { key },
+    update: {},
+    create: { key, mime: 'application/pdf', sizeBytes: bytes.length, uploadedById, purpose: 'expense-receipt' },
+  })
+  return key
+}
+
 export async function seedWork(prisma: PrismaClient, ids: Map<string, { memberId: string; userId: string }>) {
+  // Idempotent, so re-seeding an existing database also repairs the demo receipt links.
+  const receiptKey = await seedFile(prisma, 'seed/receipt-placeholder.pdf', ids.get('lead3')!.userId)
   if (await prisma.case.count()) return
   const random = rng(42)
   const pick = <T>(items: readonly T[]) => items[Math.floor(random() * items.length)]
@@ -197,7 +240,7 @@ export async function seedWork(prisma: PrismaClient, ids: Map<string, { memberId
         spentAt: dayIn(current, 1),
         paidById: id(expense.paidBy),
         submittedById: id('lead3'),
-        receiptKey: 'seed/receipt-placeholder.pdf',
+        receiptKey,
         status: expense.status,
         reviewedById: expense.status === 'SUBMITTED' ? null : finance,
         reviewedAt: expense.status === 'SUBMITTED' ? null : new Date(),

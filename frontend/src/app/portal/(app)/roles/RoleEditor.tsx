@@ -30,7 +30,7 @@ export default function RoleEditor({
       <div>
         <p className="label">Permissions</p>
         <p className="mb-3 text-xs text-ink-500">
-          Scope, narrow → wide: own, assigned, team, subtree, all. A wider scope includes the narrower ones. You can only grant scopes you hold yourself.
+          Scope, narrow → wide: own, assigned, team, subtree, all. A wider scope includes the narrower ones. You can only grant scopes you hold yourself; 🔒 grants are wider than yours and stay as they are.
         </p>
         <div className="grid gap-3 md:grid-cols-2">
           {MODULES.map((module) => (
@@ -41,13 +41,16 @@ export default function RoleEditor({
                   const key = `${module}.${action}` as PermissionKey
                   const held = viewer.perms.get(key)
                   const value = current.get(key) ?? ''
+                  // A grant wider than the editor holds is shown but locked; the server keeps it as is.
+                  const locked = !!value && scopeRank(held) < scopeRank(value as ScopeName)
                   return (
-                    <label key={action} className="text-xs text-ink-600">
+                    <label key={action} className="text-xs text-ink-600" title={locked ? "Wider than your own access, so you can't change it" : undefined}>
                       {action}
+                      {locked ? ' 🔒' : ''}
                       <select
                         name={`perm:${key}`}
                         defaultValue={value}
-                        disabled={readOnly}
+                        disabled={readOnly || locked}
                         className={`mt-1 w-full rounded-xl border border-ink-900/10 bg-white px-2 py-1.5 text-xs ${value ? 'font-semibold text-forest-700' : 'text-ink-400'}`}
                       >
                         <option value="">—</option>

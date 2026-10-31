@@ -93,6 +93,7 @@ export default async function TaskPage({ params, searchParams }: { params: { id:
                         ) : (
                           // eslint-disable-next-line @next/next/no-img-element
                           <a key={key} href={`/api/portal/files/task-attachment/${comment.id}/${index}`} target="_blank" rel="noreferrer">
+                            {/* eslint-disable-next-line @next/next/no-img-element -- private, auth-checked file route; next/image can't optimise it */}
                             <img src={`/api/portal/files/task-attachment/${comment.id}/${index}`} alt={`Attachment ${index + 1}`} className="h-24 w-24 rounded-xl object-cover" />
                           </a>
                         )

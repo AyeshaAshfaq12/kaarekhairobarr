@@ -21,9 +21,9 @@ export type InboundMessage = {
 const pkr = (amount: number) => `PKR ${amount.toLocaleString('en-PK')}`
 
 /** Open cases in a stable order; WhatsApp users refer to them by this number. */
+/** Open cases with their permanent numbers (Case.number), which never shift when a case closes. */
 export async function numberedOpenCases() {
-  const cases = await prisma.case.findMany({ where: { deletedAt: null, status: { in: ['OPEN', 'FUNDED'] } }, orderBy: { createdAt: 'asc' }, select: { id: true, title: true } })
-  return cases.map((kase, index) => ({ ...kase, number: index + 1 }))
+  return prisma.case.findMany({ where: { deletedAt: null, status: { in: ['OPEN', 'FUNDED'] } }, orderBy: { number: 'asc' }, select: { id: true, title: true, number: true } })
 }
 
 /**

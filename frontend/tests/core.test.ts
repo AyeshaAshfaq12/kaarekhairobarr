@@ -3,7 +3,7 @@ import { diffFields } from '@/lib/portal/audit'
 import { decryptString, encryptString, sha256 } from '@/lib/portal/crypto'
 import { buildTree } from '@/lib/portal/hierarchy'
 import { sniffMime } from '@/lib/portal/storage'
-import { ageOn, monthKey, monthRange } from '@/lib/portal/time'
+import { ageOn, formatPeriod, makePeriod, monthKey, monthRange, periodMonths } from '@/lib/portal/time'
 
 describe('audit diffFields', () => {
   it('keeps changed fields only and masks sensitive ones', () => {
@@ -52,6 +52,28 @@ describe('Karachi months', () => {
     const { start, end } = monthRange('2026-01')
     expect(start.toISOString()).toBe('2025-12-31T19:00:00.000Z')
     expect(end.toISOString()).toBe('2026-01-31T19:00:00.000Z')
+  })
+
+  it('monthRange spans a month range end-inclusive', () => {
+    const { start, end } = monthRange('2025-11..2026-01')
+    expect(start.toISOString()).toBe('2025-10-31T19:00:00.000Z')
+    expect(end.toISOString()).toBe('2026-01-31T19:00:00.000Z')
+  })
+
+  it('periodMonths lists every month of a month or range', () => {
+    expect(periodMonths('2026-03')).toEqual(['2026-03'])
+    expect(periodMonths('2025-11..2026-02')).toEqual(['2025-11', '2025-12', '2026-01', '2026-02'])
+  })
+
+  it('makePeriod builds a range only when it is valid and at most 12 months', () => {
+    expect(makePeriod('2026-01', '2026-03')).toBe('2026-01..2026-03')
+    expect(makePeriod('2026-01', undefined)).toBe('2026-01')
+    expect(makePeriod('2026-03', '2026-01')).toBe('2026-03')
+    expect(makePeriod('2026-01', '2026-01')).toBe('2026-01')
+    expect(makePeriod('2026-01', 'junk')).toBe('2026-01')
+    expect(makePeriod('2025-01', '2025-12')).toBe('2025-01..2025-12')
+    expect(makePeriod('2025-01', '2026-01')).toBe('2025-01')
+    expect(formatPeriod('2026-01..2026-03')).toBe('2026-01 to 2026-03')
   })
 
   it('ageOn handles birthdays', () => {

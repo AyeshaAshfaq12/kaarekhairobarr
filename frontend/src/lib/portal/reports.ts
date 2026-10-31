@@ -8,7 +8,7 @@ import {
   frozenSnapshot,
   groupMetrics,
   memberMetrics,
-  previousMonth,
+  previousPeriod,
   statusBand,
   taskMetrics,
   type MoneyMetrics,
@@ -17,7 +17,7 @@ import { caseProgress, caseWhere, donationWhere, donorWhere, outreachWhere } fro
 import { scopeFor, visibleMemberIds, type ActiveViewer } from './rbac'
 import { getSettings } from './settings'
 import { taskWhere } from './tasks'
-import { daysBetween, formatDate, monthRange, parseKarachiDate } from './time'
+import { daysBetween, formatDate, formatPeriod, makePeriod, monthRange, parseKarachiDate, periodMonths } from './time'
 
 // ---------- Shapes shared by the page, Excel and PDF ----------
 
@@ -79,13 +79,17 @@ async function resolveScope(viewer: ActiveViewer, value: string | undefined, mon
   if (chosen.value === 'org') return { label: 'Whole organisation', memberIds: 'all', snapshot: { scope: 'org', id: null } }
   const [kind, id] = chosen.value.split(':')
   if (kind === 'subtree') return { label: chosen.label, memberIds: [...(await getSubtreeIds(id))], snapshot: null }
-  const team = await prisma.team.findUniqueOrThrow({ where: { id }, include: { memberships: { select: { memberId: true } }, targets: { where: { month } } } })
-  return { label: chosen.label, memberIds: team.memberships.map((m) => m.memberId), snapshot: { scope: 'team', id }, teamTarget: team.targets[0]?.amountTarget ?? null }
+  const team = await prisma.team.findUniqueOrThrow({ where: { id }, include: { memberships: { select: { memberId: true } }, targets: { where: { month: { in: periodMonths(month) } } } } })
+  return { label: chosen.label, memberIds: team.memberships.map((m) => m.memberId), snapshot: { scope: 'team', id }, teamTarget: sumTargets(team.targets) }
 }
 
+/** A month, or a month range when `toMonth` is given (§10.2: "a month (or range) picker"). */
 function monthParam(params: ReportParams, fallback: string) {
-  return /^\d{4}-\d{2}$/.test(params.month ?? '') ? params.month! : fallback
+  const from = /^\d{4}-\d{2}$/.test(params.month ?? '') ? params.month! : fallback
+  return makePeriod(from, params.toMonth)
 }
+
+const sumTargets = (targets: { amountTarget: number }[]) => (targets.length ? targets.reduce((sum, target) => sum + target.amountTarget, 0) : null)
 
 // ---------- Columns ----------
 
@@ -141,14 +145,14 @@ async function impact(viewer: ActiveViewer, params: ReportParams, month: string)
   const totals = scope.snapshot
     ? (await frozenSnapshot(month, scope.snapshot.scope, scope.snapshot.id)) ?? (await groupMetrics(scope.memberIds, month, scope.teamTarget))
     : await groupMetrics(ids, month)
-  const previous = await groupMetrics(scope.memberIds === 'all' ? 'all' : ids, previousMonth(month))
+  const previous = await groupMetrics(scope.memberIds === 'all' ? 'all' : ids, previousPeriod(month))
   const change = previous.raised ? (totals.raised - previous.raised) / previous.raised : null
   const rows = await Promise.all(perMember.map(async ({ member, m }) => ({ member: member.fullName, ...(await metricRow(m)) })))
   const top = [...perMember].sort((a, b) => b.m.raised - a.m.raised).slice(0, 5).filter((row) => row.m.raised > 0)
   return {
     title: 'Monthly impact report',
     scopeLabel: scope.label,
-    period: month,
+    period: formatPeriod(month),
     tables: [
       { name: 'Members', columns: [{ key: 'member', label: 'Member' }, ...METRIC_COLUMNS], rows },
       { name: 'Totals', columns: [{ key: 'member', label: 'Group' }, ...METRIC_COLUMNS], rows: [{ member: `${scope.label} (each donation once)`, ...(await metricRow(totals)) }] },
@@ -162,15 +166,15 @@ async function impact(viewer: ActiveViewer, params: ReportParams, month: string)
         rows: top.map((row, index) => ({ rank: index + 1, member: row.member.fullName, raised: row.m.raised })),
       },
       {
-        name: 'Month over month',
+        name: month.includes('..') ? 'Compared with the previous period' : 'Month over month',
         columns: [
-          { key: 'month', label: 'Month' },
+          { key: 'month', label: 'Period' },
           { key: 'raised', label: 'Raised', kind: 'pkr' },
           { key: 'change', label: 'Change', kind: 'percent' },
         ],
         rows: [
-          { month: previousMonth(month), raised: previous.raised, change: null },
-          { month, raised: totals.raised, change },
+          { month: formatPeriod(previousPeriod(month)), raised: previous.raised, change: null },
+          { month: formatPeriod(month), raised: totals.raised, change },
         ],
       },
     ],
@@ -263,7 +267,8 @@ function ledgerTable(name: string, donations: (LedgerDonation & { verifierName?:
 
 /** 3. Donations ledger — same filters as the Donations list page. */
 async function donations(viewer: ActiveViewer, params: ReportParams): Promise<Report> {
-  const range = params.month ? monthRange(params.month) : null
+  const period = /^\d{4}-\d{2}$/.test(params.month ?? '') ? makePeriod(params.month!, params.toMonth) : null
+  const range = period ? monthRange(period) : null
   const where: Prisma.DonationWhereInput = {
     AND: [
       await donationWhere(viewer),
@@ -286,7 +291,7 @@ async function donations(viewer: ActiveViewer, params: ReportParams): Promise<Re
   return {
     title: 'Donations ledger',
     scopeLabel: 'Donations you can see',
-    period: params.month ?? (params.from || params.to ? `${params.from ?? '…'} to ${params.to ?? '…'}` : 'All time'),
+    period: period ? formatPeriod(period) : (params.from || params.to ? `${params.from ?? '…'} to ${params.to ?? '…'}` : 'All time'),
     tables: [ledgerTable('Ledger', rows.map((row) => ({ ...row, verifierName: row.verifiedById ? verifiers.get(row.verifiedById) : null })))],
   }
 }
@@ -365,16 +370,16 @@ async function team(viewer: ActiveViewer, params: ReportParams, month: string): 
   if (!options.some((option) => option.value === `team:${params.teamId}`)) throw new ReportNotFound()
   const found = await prisma.team.findUniqueOrThrow({
     where: { id: params.teamId! },
-    include: { memberships: { include: { member: { select: { id: true, fullName: true } } } }, targets: { where: { month } } },
+    include: { memberships: { include: { member: { select: { id: true, fullName: true } } } }, targets: { where: { month: { in: periodMonths(month) } } } },
   })
   const ids = found.memberships.map((m) => m.memberId)
   const perMember = await Promise.all(found.memberships.map(async (m) => ({ name: m.member.fullName, t: await taskMetrics([m.memberId], month) })))
-  const money = (await frozenSnapshot(month, 'team', found.id)) ?? (await groupMetrics(ids, month, found.targets[0]?.amountTarget ?? null))
+  const money = (await frozenSnapshot(month, 'team', found.id)) ?? (await groupMetrics(ids, month, sumTargets(found.targets)))
   const teamTasks = await taskMetrics(ids, month)
   return {
     title: `Team report: ${found.name}`,
     scopeLabel: found.name,
-    period: month,
+    period: formatPeriod(month),
     tables: [
       {
         name: 'Tasks by member',
@@ -418,7 +423,7 @@ async function member(viewer: ActiveViewer, params: ReportParams, month: string)
   return {
     title: `Member report: ${subject.fullName}`,
     scopeLabel: subject.fullName,
-    period: month,
+    period: formatPeriod(month),
     tables: [
       { name: 'Metrics', columns: [{ key: 'member', label: 'Member' }, ...METRIC_COLUMNS], rows: [{ member: subject.fullName, ...(await metricRow(m)) }] },
       { name: 'Tasks summary', columns: TASK_COLUMNS, rows: [{ member: subject.fullName, assigned: t.assigned, completed: t.completed, onTime: t.onTimeRate, overdue: t.overdueNow, cycle: t.avgCycleDays }] },
@@ -460,7 +465,7 @@ async function onboarding(viewer: ActiveViewer, params: ReportParams, month: str
   return {
     title: 'Onboarding report',
     scopeLabel: 'Applicants and new members',
-    period: month,
+    period: formatPeriod(month),
     tables: [
       {
         name: 'Applicants',
@@ -506,7 +511,7 @@ async function membersList(viewer: ActiveViewer, params: ReportParams, month: st
   return {
     title: 'Members',
     scopeLabel: 'Members you can see',
-    period: month,
+    period: formatPeriod(month),
     tables: [
       {
         name: 'Members',

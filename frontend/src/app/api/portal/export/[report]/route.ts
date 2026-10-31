@@ -33,10 +33,10 @@ export async function GET(request: NextRequest, { params }: { params: { report: 
 
   // Exporting needs the export action on that module (or reports.export); a member can always
   // export their own month.
-  const module = EXPORT_MODULE[params.report] ?? 'reports'
+  const exportModule = EXPORT_MODULE[params.report] ?? 'reports'
   // The event summary PDF is part of the event page for anyone who can see the event.
   const ownOnly = params.report === 'event' || (params.report === 'impact' && (!query.scope || query.scope === 'self')) || (params.report === 'member' && (!query.memberId || query.memberId === viewer.memberId))
-  if (!ownOnly && !can(viewer, module, 'export') && !can(viewer, 'reports', 'export')) return new NextResponse('Not found', { status: 404 })
+  if (!ownOnly && !can(viewer, exportModule, 'export') && !can(viewer, 'reports', 'export')) return new NextResponse('Not found', { status: 404 })
 
   let report
   try {

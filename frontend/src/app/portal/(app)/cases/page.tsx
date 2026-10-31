@@ -67,7 +67,9 @@ export default async function CasesPage({ searchParams }: { searchParams: { stat
                   <Badge tone={CASE_STATUS_TONE[kase.status]}>{humanize(kase.status)}</Badge>
                   <Badge>{humanize(kase.category)}</Badge>
                 </div>
-                <h2 className="font-display text-lg font-semibold text-ink-900">{kase.title}</h2>
+                <h2 className="font-display text-lg font-semibold text-ink-900">
+                  <span className="text-ink-400">#{kase.number}</span> {kase.title}
+                </h2>
                 <SplitProgress verified={p.verified} pending={p.pending} target={kase.targetAmount} className="mt-3" />
                 <p className="mt-2 text-sm text-ink-600">
                   <span className="font-semibold text-ink-900">{formatPKR(p.verified)}</span> of {formatPKR(kase.targetAmount)}

@@ -148,6 +148,19 @@ export function previousMonth(month: string, count = 1) {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`
 }
 
+/**
+ * The period just before `period`, of the same length: "2026-03" → "2026-02",
+ * "2026-01..2026-03" → "2025-10..2025-12".
+ */
+export function previousPeriod(period: string) {
+  const [first, last] = period.split('..')
+  if (!last) return previousMonth(first)
+  const [fy, fm] = first.split('-').map(Number)
+  const [ly, lm] = last.split('-').map(Number)
+  const length = (ly - fy) * 12 + (lm - fm) + 1
+  return `${previousMonth(first, length)}..${previousMonth(first)}`
+}
+
 /** The last `count` months ending with `month`, oldest first. */
 export function monthSeries(month: string, count: number) {
   return Array.from({ length: count }, (_, index) => previousMonth(month, count - 1 - index))

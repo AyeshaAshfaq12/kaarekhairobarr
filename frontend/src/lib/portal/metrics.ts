@@ -1,7 +1,7 @@
 import 'server-only'
 import { Prisma } from '@prisma/client'
 import { prisma } from './db'
-import { monthKey, monthRange } from './time'
+import { isMonthSpan, monthKey, monthRange, periodMonths } from './time'
 import {
   computeMoneyMetrics,
   computeTaskMetrics,
@@ -39,12 +39,8 @@ export async function raisedByMember(memberIds: string[], month: string) {
 }
 
 export async function targetsByMember(memberIds: string[], month: string) {
-  if (memberIds.length === 0) return new Map<string, number>()
-  const rows = await prisma.target.findMany({
-    where: { month, memberId: { in: memberIds } },
-    select: { memberId: true, amountTarget: true },
-  })
-  return new Map(rows.map((row) => [row.memberId!, row.amountTarget]))
+  const targets = await loadMemberTargets(memberIds, month)
+  return new Map([...targets].map(([memberId, target]) => [memberId, target.amountTarget]))
 }
 
 /** Team / org totals count each donation once, even when several members are credited (§9.3). */
@@ -112,11 +108,22 @@ export async function loadMonthData(memberIds: MemberSet, month: string): Promis
   }
 }
 
+/** Member targets for a month, or summed over the months of a range (§10.2). */
 export async function loadMemberTargets(memberIds: string[], month: string) {
   const rows = memberIds.length
-    ? await prisma.target.findMany({ where: { month, memberId: { in: memberIds } }, select: { memberId: true, amountTarget: true, outreachTarget: true } })
+    ? await prisma.target.findMany({
+        where: { month: { in: periodMonths(month) }, memberId: { in: memberIds } },
+        select: { memberId: true, amountTarget: true, outreachTarget: true },
+      })
     : []
-  return new Map(rows.map((row) => [row.memberId!, row]))
+  const totals = new Map<string, { memberId: string; amountTarget: number; outreachTarget: number | null }>()
+  for (const row of rows) {
+    const total = totals.get(row.memberId!) ?? { memberId: row.memberId!, amountTarget: 0, outreachTarget: null }
+    total.amountTarget += row.amountTarget
+    if (row.outreachTarget !== null) total.outreachTarget = (total.outreachTarget ?? 0) + row.outreachTarget
+    totals.set(row.memberId!, total)
+  }
+  return totals
 }
 
 /** Per-member metrics for a list of members (each member's credits count in full). */
@@ -146,7 +153,7 @@ export async function groupMetrics(memberIds: MemberSet, month: string, teamTarg
   let outreachTarget: number | null = null
   if (teamTarget === undefined) {
     const targets = await prisma.target.aggregate({
-      where: { month, memberId: ids ? { in: ids } : { not: null } },
+      where: { month: { in: periodMonths(month) }, memberId: ids ? { in: ids } : { not: null } },
       _sum: { amountTarget: true, outreachTarget: true },
     })
     amountTarget = targets._sum.amountTarget
@@ -190,9 +197,9 @@ export function snapshotKey(month: string, scope: 'member' | 'team' | 'org', id?
   return `${month}:${scope}:${id ?? 'org'}`
 }
 
-/** Frozen snapshot for a closed month, if any. The current month is always live. */
+/** Frozen snapshot for a closed month, if any. The current month and month ranges are always live. */
 export async function frozenSnapshot(month: string, scope: 'member' | 'team' | 'org', id?: string | null) {
-  if (month >= monthKey()) return null
+  if (isMonthSpan(month) || month >= monthKey()) return null
   const row = await prisma.monthlyMetric.findUnique({ where: { key: snapshotKey(month, scope, id) } })
   return row?.frozenAt ? (row.data as unknown as SnapshotData) : null
 }

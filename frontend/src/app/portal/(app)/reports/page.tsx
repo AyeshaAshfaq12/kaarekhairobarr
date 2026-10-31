@@ -11,7 +11,7 @@ import { Card, EmptyState, PageHeader, Tabs } from '@/components/portal/ui'
 
 export const metadata: Metadata = { title: 'Reports | KKB Portal' }
 
-type SearchParams = { report?: string; month?: string; scope?: string; teamId?: string; memberId?: string; eventId?: string; caseId?: string }
+type SearchParams = { report?: string; month?: string; toMonth?: string; scope?: string; teamId?: string; memberId?: string; eventId?: string; caseId?: string }
 
 export default async function ReportsPage({ searchParams }: { searchParams: SearchParams }) {
   const viewer = await requireActiveViewer()
@@ -34,6 +34,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
   ])
   const params: Record<string, string | undefined> = {
     month,
+    toMonth: searchParams.toMonth && /^\d{4}-\d{2}$/.test(searchParams.toMonth) && searchParams.toMonth > month ? searchParams.toMonth : undefined,
     scope: searchParams.scope,
     teamId: searchParams.teamId ?? teams[0]?.value.slice(5),
     memberId: searchParams.memberId,
@@ -55,12 +56,20 @@ export default async function ReportsPage({ searchParams }: { searchParams: Sear
 
   return (
     <>
-      <PageHeader title="Reports" description="Every number is limited to what you can see. Closed months read frozen snapshots." />
+      <PageHeader
+        title="Reports"
+        description="Every number is limited to what you can see. A single closed month reads frozen snapshots; a range (up to 12 months) is computed live, with targets summed."
+      />
       <Tabs tabs={tabs} active={key} />
 
       <form action="/portal/reports" className="mb-4 flex flex-wrap items-end gap-2">
         <input type="hidden" name="report" value={key} />
-        {usesMonth ? <input type="month" name="month" defaultValue={month} aria-label="Month" className="field !w-auto" /> : null}
+        {usesMonth ? (
+          <>
+            <input type="month" name="month" defaultValue={month} aria-label="Month (or start of range)" className="field !w-auto" />
+            <input type="month" name="toMonth" defaultValue={params.toMonth} aria-label="Up to month (optional, max 12 months)" title="Optional: pick an end month for a range" className="field !w-auto" />
+          </>
+        ) : null}
         {key === 'impact' ? (
           <select name="scope" defaultValue={searchParams.scope ?? 'self'} aria-label="Scope" className="field !w-auto">
             {scopes.map((option) => (
