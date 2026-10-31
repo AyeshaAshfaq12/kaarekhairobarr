@@ -3,12 +3,12 @@
 Living record of how the portal described in `docs/KKB Portal — Build Spec.pdf` (the "spec") is being built.
 Update this file at the end of every phase or whenever a decision changes.
 
-- **Last updated:** 2026-10-31
-- **Current state:** all four phases are built and tested. Phase 4 (WhatsApp) has not been tried against Meta's live API yet, because it needs credentials and an approved template (see §6).
+- **Last updated:** 2026-11-01
+- **Current state:** all four phases are built and tested, and a follow-up pass closed most of the known gaps (D62–D69). Phase 4 (WhatsApp) has not been tried against Meta's live API yet, because it needs credentials and an approved template (see §6). The spec defines no phase after 4.
 - **Code:** `frontend/` (Next.js 14.2 App Router). Portal pages are in `frontend/src/app/portal`, API routes in `frontend/src/app/api/portal`, server logic in `frontend/src/lib/portal`, schema and seed in `frontend/prisma`.
 - **Branches and commits:**
   - Phase 1 is on `feature/portal-phase-1` (`ec985e9`, plus docs in `29d5c44`).
-  - Phases 2–4 are on `feature/portal-phases-2-4`, which branches from it: `e4cba0a` (Phases 2–3), `1655799` (Phase 4), plus this doc.
+  - Phases 2–4 are on `feature/portal-phases-2-4`, which branches from it: `e4cba0a` (Phases 2–3), `1655799` (Phase 4), the docs commit, and the follow-up fixes (D62–D69).
 
 ---
 
@@ -20,11 +20,12 @@ Update this file at the end of every phase or whenever a decision changes.
 | 2. Money | Cases, beneficiaries, donors, outreach, donations, verification, targets, metrics, monthly close, dashboards (§7, §9, §10.1) | ✅ Done | Unit tests for every §9.2 metric and for dedupe; browser money flow |
 | 3. Work and events | Tasks + Kanban, events, responsibilities, expenses, reports, Excel/PDF export, email notifications (§6.2–6.3, §8, §10.2–10.3) | ✅ Done | Browser event and task flows; export test |
 | 4. WhatsApp | WhatsApp channel for notifications, then quick-logging outreach and donations via WhatsApp (§11.2) | ✅ Built, 🟡 not tried live | Signed-webhook browser tests; parser and signature unit tests |
+| Follow-up | Close the known gaps from §6: report ranges, stable case numbers, role-editor lock, approvals notice, demo receipts, ESLint, dependency audit | ✅ Done | `e2e/hardening.spec.ts`, extra WhatsApp checks, period unit tests |
 
 **Test totals:**
-- 104 unit tests in 7 files.
-- 19 browser tests in 7 files, all at 375 px. They include a smoke test that opens every screen as Admin, Lead, Member and Finance.
-- Each phase also passed a type-check and a production build.
+- 108 unit tests in 7 files.
+- 22 browser tests in 8 files, all at 375 px. They include a smoke test that opens every screen as Admin, Lead, Member and Finance.
+- Each phase also passed a type-check and a production build. Since the follow-up, `npm run lint` (ESLint, `next/core-web-vitals`) is clean too.
 
 **Phases 2 and 3 were committed together.** The nightly job runs task recurrence, the dashboard shows event-lead widgets, and the list pages export through the Phase 3 report system. Split apart, neither half builds on its own.
 
@@ -208,7 +209,7 @@ Each entry records what was decided and why. "Spec" means the build spec PDF. Wh
   - Members with an outstanding NDA are refused.
   - The webhook checks Meta's HMAC signature, and messages are deduplicated on the WhatsApp message id.
 - **D57. Commands** are parsed by a pure, unit-tested parser (`whatsapp-commands.ts`):
-  - `help` and `cases` (open cases, numbered by creation order).
+  - `help` and `cases` (open cases with their permanent numbers, see D63).
   - `outreach <phone> <outcome> [amount] [name]`.
   - `donation <phone> <amount> <method> [ref] #<case>`, where non-cash donations must arrive as the caption of the screenshot, which is downloaded and stored like a portal upload.
   - Logging goes through the same domain functions as the portal: dedupe, `FIRST_OUTREACH`, outreach→DONATED, the duplicate guard, and audit.
@@ -220,6 +221,22 @@ Each entry records what was decided and why. "Spec" means the build spec PDF. Wh
 - **D59. Next.js link prefetches no longer touch the session cookie.** A late prefetch response could re-set a cookie the test had just cleared. Real logouts were never affected, because logout deletes the session server-side.
 - **D60. Cards get `min-w-0`.** Without it, wide tables inside grid cells stretched pages past 375 px. The smoke test caught it.
 - **D61. Forms that disappear after submitting** (approving the last applicant, moving a task) can't show their own toast. The approvals page redirects with a notice instead; task status moves use one stable form.
+
+### Follow-up after Phase 4 (2026-11-01)
+
+- **D62. Reports take a month range (§10.2: "a month (or range) picker").**
+  - A period is `YYYY-MM` or `YYYY-MM..YYYY-MM`, at most 12 months; longer or backwards ranges fall back to the start month. The reports page has an optional "up to" month, and exports accept the same `toMonth` parameter.
+  - `monthRange()` understands both forms, so the metric loaders work unchanged. Targets are summed over the months of the range.
+  - Ranges are always computed live. Frozen snapshots are per month, so a range over closed months uses current team membership.
+  - The impact report compares against the previous period of the same length ("Compared with the previous period").
+  - Applies to impact, team, member, onboarding and the donations ledger. Case and event reports are all-time, as before.
+- **D63. Cases have a permanent number (`Case.number`, autoincrement, unique).** Existing cases were numbered in creation order by the migration. WhatsApp `#n` now means that number, so it no longer shifts when a case closes. The number is shown on the case list and case page.
+- **D64. The role editor locks grants wider than the editor's own access.** Previously the disabled option was dropped on save, silently narrowing the role. Now the select is shown locked (🔒) and the server carries the existing grant over unchanged; only the grants the editor could set themselves are checked against the "can't grant what you don't hold" rule.
+- **D65. The approvals confirmation is built from the database.** The redirect carries `?approved=<memberId>` or `?rejected=<memberId>`; the page shows the member's name only if their status matches. No free text from the URL is displayed.
+- **D66. The seed writes a real placeholder receipt** (`seed/receipt-placeholder.pdf`, a one-page PDF) to S3 or `.uploads/` and registers it, so demo expense receipts open. It runs on every seed, so re-seeding an existing database repairs the links.
+- **D67. ESLint is set up** (`.eslintrc.json` extending `next/core-web-vitals`; `eslint@8` and `eslint-config-next@14.2.35` as dev dependencies). Two variables named `module` were renamed; the two `<img>` tags showing private, auth-checked files keep `<img>` with a commented rule exception, because `next/image` can't optimise them.
+- **D68. Dependency audit.** `npm audit fix` (non-breaking) was applied. Everything left needs a major upgrade and is listed in §6.
+- **D69. Kept as designed, not changed:** a donation's donor stays fixed after logging (delete and re-log keeps the audit trail clean), expenses are withdrawn and resubmitted rather than edited (D51), the subtree trend is live, and dashboards compute on each request.
 
 ---
 
@@ -280,6 +297,7 @@ See `frontend/FRONTEND_SETUP.md` → "Member Portal". In short:
 cd frontend
 cp .env.example .env.local    # DATABASE_URL and CNIC_ENCRYPTION_KEY are required
 npm install && npm run db:deploy && npm run db:seed && npm run dev
+npm run lint                  # ESLint (next/core-web-vitals)
 npm test                      # unit tests (set TEST_DATABASE_URL for the DB-backed suites)
 npm run build && npm run test:e2e   # browser tests; E2E_DATABASE_URL is WIPED each run
 ```
@@ -311,17 +329,18 @@ Seed logins (password `kkb-portal-dev`):
 
 ### Known limitations and small gaps
 
-- [ ] WhatsApp case numbers follow creation order among open cases, so they shift when a case closes. Members should send `cases` before logging a donation.
+- [x] ~~WhatsApp case numbers shift when a case closes.~~ Fixed: permanent case numbers (D63).
 - [ ] Team totals for a month that isn't frozen yet use current team membership. Frozen snapshots keep the membership as it was at closing.
 - [ ] The subtree trend on the lead dashboard is always computed live, because there are no subtree snapshots, only member, team and org ones.
-- [ ] Reports are monthly. Only the donations ledger accepts a from/to date range.
+- [x] ~~Reports are monthly only.~~ Fixed: month ranges up to 12 months (D62).
+- [ ] Month ranges are computed live, so for closed months they can differ slightly from the frozen monthly snapshots (team membership as of today).
 - [ ] A donation's donor can't be changed after logging (delete and log again). Expenses are withdrawn and resubmitted rather than edited (D51).
-- [ ] Seeded expenses point to a placeholder receipt file that doesn't exist, so their receipt links 404 in demo data. Real uploads work.
-- [ ] Role editor edge case: when a non-Admin role editor saves a role containing a scope they don't hold, that disabled option is dropped, silently narrowing the role.
-- [ ] The approvals notice is read from the `?notice=` URL parameter. The text is escaped, but any text can be shown.
+- [x] ~~Seeded expense receipts 404.~~ Fixed (D66).
+- [x] ~~Role editor silently narrows roles.~~ Fixed (D64).
+- [x] ~~Approvals notice shows free text from the URL.~~ Fixed (D65).
 - [ ] Dashboards compute metrics on every request. That's fine for 50–100 members; add caching if it grows a lot.
-- [ ] No ESLint configuration in the repo, so `next lint` isn't part of the checks.
-- [ ] `npm audit` reports existing advisories in the dependency tree. They haven't been reviewed.
+- [x] ~~No ESLint configuration.~~ Added; lint is clean (D67).
+- [ ] **Dependency advisories that need major upgrades** (reviewed 2026-11-01, after `npm audit fix`). Runtime: `next` 14.2 (critical; fixed only in Next 15/16), `zod` 3 (fix in 4), `prisma` 6 (via `deepmerge-ts`; fix in 7), `firebase` (used by the public site, via `@grpc/grpc-js`), `exceljs` (via `uuid`), and `postcss`. Dev-only: `vitest`/`esbuild`, `glob`/`minimatch`. Each is a separate upgrade project with its own testing; Next 14 → 15+ is the one worth scheduling first.
 - [ ] The Prisma 7 deprecation warning about `package.json#prisma` (D3).
 
 ### Ideas, not requested
