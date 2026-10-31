@@ -471,12 +471,14 @@ Built with ❤️ for Kaare Khair o Barr
 
 A members-only portal built from `docs/KKB Portal — Build Spec.pdf`. It lives in this same Next.js app:
 the public site moved into the `src/app/(site)` route group (URLs unchanged) and the portal is under
-`src/app/portal`. Server code lives in `src/lib/portal`.
+`src/app/portal`. Server code lives in `src/lib/portal`. Decisions, progress and open items are recorded
+in `docs/portal/PORTAL_PROGRESS.md`.
 
-**Status: Phase 1 (Foundation) is done.** That covers auth, sign-up → email verification → NDA → admin
-approval, the onboarding checklist, the hierarchy and org tree, roles/RBAC CRUD, teams, offboarding,
-the audit log, in-app and email notifications, settings and "download my data". Phases 2–4 (money,
-work/events/reports, WhatsApp) come next. Their tables already exist in the schema.
+**Status: all four phases are built.**
+1. Foundation: accounts, the NDA, approval, the hierarchy, roles, teams, audit and notifications.
+2. Money: cases, donors, outreach, donations and verification, targets, metrics, monthly close and dashboards.
+3. Work and events: tasks and Kanban, events and expenses, and seven reports with Excel/PDF export.
+4. WhatsApp: notifications and quick logging. This still needs Meta credentials to go live.
 
 ### Setup
 
@@ -484,25 +486,45 @@ work/events/reports, WhatsApp) come next. Their tables already exist in the sche
 cp .env.example .env.local      # fill DATABASE_URL and CNIC_ENCRYPTION_KEY at minimum
 npm install                     # also runs prisma generate
 npm run db:deploy               # apply migrations (or `npm run db:migrate` while developing)
-npm run db:seed                 # roles, teams, NDA v1, checklist, demo people
+npm run db:seed                 # roles, teams, NDA v1, checklist, people, cases, donors,
+                                # outreach, donations, targets, tasks and an event
 npm run dev                     # http://localhost:3000/portal
 ```
 
 Seed logins: `admin@kkb.test` (SuperAdmin), `finance@kkb.test`, `lead1..3@kkb.test`, `sub1..2@kkb.test`,
 `m1..m15@kkb.test`, all with password `kkb-portal-dev` (override with `SEED_PASSWORD`).
-Without `RESEND_API_KEY`, emails (verification links, resets, invites) are printed to the server log.
-Without `S3_BUCKET`, uploads go to `./.uploads` (gitignored).
+- Without `RESEND_API_KEY`, emails (verification links, resets, invites, notifications) are printed to the server log.
+- Without `S3_BUCKET`, uploads go to `./.uploads` (gitignored).
+- Without the `WHATSAPP_*` settings, WhatsApp stays off.
 
 ### Tests
 
 ```bash
-npm test                        # Vitest: authorize() across every scope, validation, crypto, months;
-                                # the subtree CTE tests run when TEST_DATABASE_URL is set
-npm run build && npm run test:e2e   # Playwright at 375 px. Needs E2E_DATABASE_URL (defaults to
+npm test                        # Vitest: authorize() across every scope, every §9.2 metric, rollups,
+                                # validation, crypto, months, WhatsApp parser and signatures.
+                                # DB-backed suites (subtree CTE, donor dedupe) run when
+                                # TEST_DATABASE_URL is set
+npm run build && npm run test:e2e   # Playwright at 375 px: onboarding, access, offboarding, money,
+                                    # events/expenses, tasks, exports, WhatsApp webhook, and a smoke
+                                    # test of every screen. Needs E2E_DATABASE_URL (defaults to
                                     # TEST_DATABASE_URL), which is WIPED and re-seeded on every run
 ```
 
 ### Cron
 
-`vercel.json` calls `/api/portal/cron/purge-unverified` daily (needs `CRON_SECRET`). It purges
-accounts left unverified for 7+ days.
+`vercel.json` schedules these routes. Each needs the header `Authorization: Bearer $CRON_SECRET`:
+
+| Route | When | What |
+|---|---|---|
+| `/api/portal/cron/nightly` | 03:00 PKT | Monthly close: snapshot the previous month on days 1–10, freeze on day 11. Also the digest of donations pending over 3 days, and copying recurring tasks. Add `?at=<ISO date>` to replay as of a moment (backfills). |
+| `/api/portal/cron/morning` | 08:00 PKT | Follow-ups due today, and tasks due tomorrow or overdue. |
+| `/api/portal/cron/purge-unverified` | daily | Deletes accounts left unverified for 7+ days. |
+
+### WhatsApp (optional)
+
+1. Create a WhatsApp Cloud API app and phone number in Meta.
+2. Get a template approved with two body parameters: `{{1}}` title and `{{2}}` details/link.
+3. Set `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_TEMPLATE` and `WHATSAPP_TEMPLATE_LANGUAGE`.
+4. Point the webhook at `https://<host>/api/portal/whatsapp/webhook`.
+
+Members opt in under Settings → WhatsApp. Organisation settings shows the connection status and the latest messages.
